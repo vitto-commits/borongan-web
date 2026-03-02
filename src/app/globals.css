@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+:root {
+  --navy: #1E3A5F;
+  --gold: #D4A843;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #F5F7FA;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* iOS PWA safe areas */
+@supports (padding: env(safe-area-inset-top)) {
+  .safe-top { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+}
+
+/* Prevent iOS bounce */
+html { overflow: hidden; height: 100%; }
+body { overflow: auto; height: 100%; -webkit-overflow-scrolling: touch; }
+
+/* Input zoom prevention on iOS */
+input, select, textarea { font-size: 16px !important; }
