@@ -2,7 +2,10 @@
 
 :root {
   --navy: #1E3A5F;
+  --navy-light: #2A4A6F;
+  --navy-dark: #152B47;
   --gold: #D4A843;
+  --gold-light: #E8C97A;
 }
 
 body {
@@ -17,9 +20,31 @@ body {
   .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 }
 
-/* Prevent iOS bounce */
-html { overflow: hidden; height: 100%; }
-body { overflow: auto; height: 100%; -webkit-overflow-scrolling: touch; }
+/* iOS bounce prevention in standalone mode */
+@media all and (display-mode: standalone) {
+  html { overflow: hidden; height: 100%; }
+  body { overflow: auto; height: 100%; -webkit-overflow-scrolling: touch; }
+}
 
-/* Input zoom prevention on iOS */
+/* Prevent iOS input zoom */
 input, select, textarea { font-size: 16px !important; }
+
+/* Card flip animation */
+.card-inner {
+  transition: transform 0.6s;
+  transform-style: preserve-3d;
+  position: relative;
+}
+.card-inner.flipped { transform: rotateY(180deg); }
+.card-front, .card-back {
+  backface-visibility: hidden;
+  position: absolute;
+  inset: 0;
+}
+.card-back { transform: rotateY(180deg); }
+
+/* Smooth transitions */
+.transition-expand {
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+  overflow: hidden;
+}

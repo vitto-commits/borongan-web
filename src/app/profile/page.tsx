@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation'
 import { AuthProvider, useAuth } from '@/components/AuthProvider'
 import { BottomNav } from '@/components/BottomNav'
 import { supabase } from '@/lib/supabase'
-import { ServiceEnrollment } from '@/lib/types'
+
+interface EnrollmentData { id: number; service_id: number; status: string; services?: { name: string } }
+interface DocData { id: number; service_id?: number; label: string; file_url: string; file_name: string; uploaded_at?: string; services?: { name: string } }
 
 function ProfileContent() {
   const { user, citizen, loading, refreshCitizen, signOut } = useAuth()
@@ -15,23 +17,28 @@ function ProfileContent() {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [street, setStreet] = useState('')
-  const [enrollments, setEnrollments] = useState<ServiceEnrollment[]>([])
+  const [enrollments, setEnrollments] = useState<EnrollmentData[]>([])
+  const [documents, setDocuments] = useState<DocData[]>([])
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const avatarRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!loading && !user) router.push('/login')
   }, [loading, user, router])
 
-  useEffect(() => {
-    if (citizen) {
-      setName(citizen.full_name || '')
-      setPhone(citizen.phone || '')
-      setStreet(citizen.street_address || '')
-      supabase.from('service_enrollments').select('*, services(name)')
-        .eq('citizen_id', citizen.id).then(({ data }) => setEnrollments(data || []))
-    }
-  }, [citizen])
+  const loadData = async () => {
+    if (!citizen) return
+    setName(citizen.full_name || '')
+    setPhone(citizen.phone || '')
+    setStreet(citizen.street_address || '')
+    const { data: e } = await supabase.from('service_enrollments').select('*, services(name)').eq('citizen_id', citizen.id)
+    const { data: d } = await supabase.from('citizen_documents').select('*, services(name)').eq('citizen_id', citizen.id).order('uploaded_at', { ascending: false })
+    setEnrollments(e || [])
+    setDocuments(d || [])
+  }
+
+  useEffect(() => { if (citizen) loadData() }, [citizen])
 
   const handleSave = async () => {
     if (!citizen) return
@@ -65,133 +72,190 @@ function ProfileContent() {
     router.push('/login')
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin w-8 h-8 border-4 border-navy border-t-transparent rounded-full" /></div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin w-8 h-8 border-4 border-[var(--navy)] border-t-transparent rounded-full" /></div>
   if (!citizen) return null
 
   const avatar = citizen.avatar_url || citizen.selfie_url
+  const docsByService: Record<number, DocData[]> = {}
+  for (const doc of documents) {
+    const sid = doc.service_id ?? 0
+    if (!docsByService[sid]) docsByService[sid] = []
+    docsByService[sid].push(doc)
+  }
 
   return (
-    <div className="min-h-screen pb-20">
-      <div className="bg-navy text-white px-4 py-4 safe-top">
-        <div className="max-w-lg mx-auto flex items-center justify-between">
-          <h1 className="text-lg font-bold">Profile</h1>
+    <div className="min-h-screen pb-20 bg-[#F5F7FA]">
+      <div className="max-w-lg mx-auto px-4 py-5">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="text-[22px] font-bold text-[var(--navy)]">Profile</h1>
           {!editing ? (
-            <button onClick={() => setEditing(true)} className="text-gold text-sm font-semibold">Edit</button>
+            <button onClick={() => setEditing(true)} className="p-2"><svg className="w-5 h-5 text-[var(--navy)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
           ) : (
-            <button onClick={handleSave} disabled={saving} className="text-gold text-sm font-semibold">
-              {saving ? 'Saving...' : 'Save'}
-            </button>
+            <button onClick={handleSave} disabled={saving} className="text-[var(--navy)] font-bold text-sm">{saving ? 'Saving...' : 'Save'}</button>
           )}
         </div>
-      </div>
 
-      <div className="max-w-lg mx-auto px-4 py-6">
         {/* Avatar */}
         <div className="flex flex-col items-center mb-6">
-          <div className="relative" onClick={() => avatarRef.current?.click()}>
-            <div className="w-24 h-24 rounded-full border-3 border-gold overflow-hidden bg-gray-100 cursor-pointer">
+          <div className="relative cursor-pointer" onClick={() => avatarRef.current?.click()}>
+            <div className="w-[90px] h-[90px] rounded-full border-[3px] border-[var(--gold)] overflow-hidden bg-gray-200">
               {uploadingAvatar ? (
-                <div className="w-full h-full flex items-center justify-center"><div className="animate-spin w-6 h-6 border-2 border-navy border-t-transparent rounded-full" /></div>
+                <div className="w-full h-full flex items-center justify-center"><div className="animate-spin w-6 h-6 border-2 border-[var(--navy)] border-t-transparent rounded-full" /></div>
               ) : avatar ? (
                 <img src={avatar} alt="" className="w-full h-full object-cover" />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-300 text-4xl">👤</div>
+                <div className="w-full h-full flex items-center justify-center text-gray-400 text-4xl">👤</div>
               )}
             </div>
-            <div className="absolute bottom-0 right-0 w-8 h-8 bg-navy rounded-full border-2 border-white flex items-center justify-center cursor-pointer">
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+            <div className="absolute bottom-0 right-0 w-[30px] h-[30px] bg-[var(--navy)] rounded-full border-2 border-white flex items-center justify-center">
+              <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
             </div>
             <input ref={avatarRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
           </div>
-          <p className="mt-3 font-bold text-navy text-lg">{citizen.full_name}</p>
-          <p className="text-gray-400 text-xs">{citizen.email}</p>
+          <p className="mt-2.5 text-xl font-bold text-[var(--navy)]">{citizen.full_name}</p>
+          <p className="text-sm text-gray-500">{citizen.email}</p>
         </div>
 
-        {/* Info fields */}
-        <div className="space-y-3">
-          <h3 className="font-bold text-navy text-sm">Personal Information</h3>
-          <Field label="Full Name" value={name} editing={editing} onChange={setName} />
-          <Field label="Phone" value={phone} editing={editing} onChange={setPhone} />
-          <Field label="Street Address" value={street} editing={editing} onChange={setStreet} />
-          <ReadOnly label="Barangay" value={citizen.barangays?.name || '—'} />
-          <ReadOnly label="Birthdate" value={citizen.birthdate || '—'} />
-          <ReadOnly label="Status" value={citizen.status} />
-        </div>
-
-        {/* ID docs */}
-        {(citizen.valid_id_url || citizen.selfie_url) && (
-          <div className="mt-6">
-            <h3 className="font-bold text-navy text-sm mb-3">ID Documents</h3>
-            <div className="grid grid-cols-2 gap-3">
-              {citizen.valid_id_url && <DocThumb label="Valid ID" url={citizen.valid_id_url} />}
-              {citizen.selfie_url && <DocThumb label="Selfie" url={citizen.selfie_url} />}
+        {/* Rejection notice */}
+        {citizen.status === 'rejected' && (
+          <div className="bg-red-50 rounded-xl p-3 mb-4 flex items-start gap-2">
+            <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <div>
+              <p className="font-bold text-sm">Registration Rejected</p>
+              <p className="text-sm text-gray-600">{citizen.rejection_reason || 'No reason provided'}</p>
             </div>
           </div>
         )}
 
-        {/* Services */}
-        {enrollments.length > 0 && (
-          <div className="mt-6">
-            <h3 className="font-bold text-navy text-sm mb-3">Enrolled Services</h3>
-            <div className="space-y-2">
-              {enrollments.map(e => (
-                <div key={e.id} className="bg-white rounded-xl p-3 flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${e.status === 'active' ? 'bg-green-500' : 'bg-yellow-500'}`} />
-                  <span className="text-sm flex-1">{e.services?.name}</span>
-                  <span className="text-xs text-gray-400">{e.status}</span>
-                </div>
-              ))}
+        {/* Personal Info */}
+        <h3 className="font-bold text-[var(--navy)] mb-3">Personal Information</h3>
+        <div className="space-y-3 mb-6">
+          {editing ? (
+            <>
+              <EditField label="Full Name" value={name} onChange={setName} />
+              <EditField label="Phone" value={phone} onChange={setPhone} />
+              <EditField label="Street Address" value={street} onChange={setStreet} />
+            </>
+          ) : (
+            <>
+              <ReadField label="Full Name" value={name} />
+              <ReadField label="Phone" value={phone} />
+              <ReadField label="Street Address" value={street} />
+            </>
+          )}
+          <ReadField label="Barangay" value={citizen.barangays?.name || '—'} />
+          <ReadField label="Birthdate" value={citizen.birthdate || '—'} />
+          <ReadField label="Status" value={citizen.status || '—'} />
+        </div>
+
+        {/* ID Documents */}
+        {(citizen.valid_id_url || citizen.selfie_url) && (
+          <>
+            <h3 className="font-bold text-[var(--navy)] mb-3">ID Documents</h3>
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              {citizen.valid_id_url && <DocThumb label="Valid ID" url={citizen.valid_id_url} onPreview={setPreviewUrl} />}
+              {citizen.selfie_url && <DocThumb label="Selfie" url={citizen.selfie_url} onPreview={setPreviewUrl} />}
             </div>
+          </>
+        )}
+
+        {/* Enrolled Services */}
+        <h3 className="font-bold text-[var(--navy)] mb-3">Enrolled Services</h3>
+        {enrollments.length === 0 ? (
+          <p className="text-gray-400 text-sm mb-6">No services enrolled</p>
+        ) : (
+          <div className="space-y-2 mb-6">
+            {enrollments.map(e => (
+              <div key={e.id} className="bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3">
+                <svg className={`w-5 h-5 ${e.status === 'active' ? 'text-green-500' : 'text-orange-500'}`} fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" /></svg>
+                <span className="flex-1 text-sm font-medium">{e.services?.name}</span>
+                <span className={`text-xs ${e.status === 'active' ? 'text-green-600' : 'text-orange-600'}`}>{e.status}</span>
+              </div>
+            ))}
           </div>
+        )}
+
+        {/* My Documents */}
+        {documents.length > 0 && (
+          <>
+            <h3 className="font-bold text-[var(--navy)] mb-3">My Documents</h3>
+            <p className="text-xs text-gray-400 mb-3">Organized by service. Tap to preview.</p>
+            {Object.entries(docsByService).map(([sid, docs]) => {
+              const serviceName = sid === '0' ? 'General' : docs[0]?.services?.name || 'Service'
+              return (
+                <div key={sid} className="bg-white rounded-xl border border-gray-200 mb-3 overflow-hidden">
+                  <div className="bg-gray-50 px-3.5 py-2.5 flex items-center gap-2">
+                    <span className="text-sm">📁</span>
+                    <span className="font-semibold text-sm text-gray-600">{serviceName}</span>
+                    <span className="ml-auto text-xs text-gray-400">{docs.length} file(s)</span>
+                  </div>
+                  {docs.map(doc => (
+                    <div key={doc.id} className="px-3.5 py-2.5 border-t border-gray-100 flex items-center gap-2 cursor-pointer active:bg-gray-50"
+                      onClick={() => setPreviewUrl(doc.file_url)}>
+                      <span className="text-blue-500">🖼️</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm truncate">{doc.file_name}</p>
+                        <p className="text-[11px] text-gray-400">{doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : ''}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
+          </>
         )}
 
         {/* Logout */}
         <button onClick={handleSignOut}
-          className="w-full mt-8 py-3 border border-red-300 text-red-500 font-semibold rounded-xl active:bg-red-50 transition">
+          className="w-full mt-6 py-3.5 border border-red-300 text-red-500 font-semibold rounded-xl flex items-center justify-center gap-2 active:bg-red-50 transition">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
           Log Out
         </button>
       </div>
+
+      {/* Image Preview Modal */}
+      {previewUrl && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setPreviewUrl(null)}>
+          <button className="absolute top-4 right-4 text-white" onClick={() => setPreviewUrl(null)}>
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+          <img src={previewUrl} alt="" className="max-w-full max-h-[80vh] object-contain rounded-lg" />
+        </div>
+      )}
+
       <BottomNav />
     </div>
   )
 }
 
-function Field({ label, value, editing, onChange }: { label: string; value: string; editing: boolean; onChange: (v: string) => void }) {
-  if (!editing) return <ReadOnly label={label} value={value || '—'} />
+function ReadField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-white rounded-xl p-3">
-      <label className="block text-[10px] text-gray-400 font-medium mb-1">{label}</label>
+    <div className="bg-white rounded-xl p-3.5">
+      <p className="text-[11px] text-gray-400 font-medium">{label}</p>
+      <p className="text-[15px] mt-0.5">{value || '—'}</p>
+    </div>
+  )
+}
+
+function EditField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="bg-white rounded-xl p-3.5">
+      <label className="block text-[11px] text-gray-400 font-medium mb-1">{label}</label>
       <input value={value} onChange={e => onChange(e.target.value)}
-        className="w-full text-sm outline-none border-b border-navy/20 pb-1 focus:border-navy" />
+        className="w-full text-[15px] border-b border-[var(--navy)]/20 pb-1 outline-none focus:border-[var(--navy)]" />
     </div>
   )
 }
 
-function ReadOnly({ label, value }: { label: string; value: string }) {
+function DocThumb({ label, url, onPreview }: { label: string; url: string; onPreview: (url: string) => void }) {
   return (
-    <div className="bg-white rounded-xl p-3">
-      <p className="text-[10px] text-gray-400 font-medium">{label}</p>
-      <p className="text-sm text-gray-800 mt-0.5">{value}</p>
-    </div>
-  )
-}
-
-function DocThumb({ label, url }: { label: string; url: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <>
-      <div onClick={() => setOpen(true)} className="cursor-pointer rounded-xl overflow-hidden border border-gray-200 relative h-24 bg-gray-100">
-        <img src={url} alt={label} className="w-full h-full object-cover" />
-        <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-2 py-1">
-          <p className="text-white text-[10px] text-center">{label}</p>
-        </div>
+    <div className="h-[100px] rounded-xl border border-gray-300 overflow-hidden relative cursor-pointer" onClick={() => onPreview(url)}>
+      <img src={url} alt={label} className="w-full h-full object-cover" />
+      <div className="absolute bottom-0 left-0 right-0 bg-black/50 py-1">
+        <p className="text-white text-[11px] text-center">{label}</p>
       </div>
-      {open && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setOpen(false)}>
-          <img src={url} alt={label} className="max-w-full max-h-[80vh] object-contain rounded-lg" />
-        </div>
-      )}
-    </>
+    </div>
   )
 }
 
